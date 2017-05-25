@@ -4,27 +4,6 @@ import sys
 import time
 from pprint import pprint
 
-index = 1  # 参数位置
-mode = 0  # 调试级别
-if index < len(sys.argv):
-    if sys.argv[1] == '-d':
-        mode = 1  # 仅输出时间坐标，序号，查询的域名
-        index += 1
-    elif sys.argv[1] == '-dd':
-        mode = 2
-        index += 1
-
-nameserver = []  # DNS
-if index < len(sys.argv):
-    if sys.argv[index].count('.') == 3 and sys.argv[index].startswith(
-            ('1', '2', '3', '4', '5', '6', '7', '8', '9', '0')):
-        nameserver.append(sys.argv[index])
-        index += 1
-
-filename = 'dnsrelay.txt'  # hosts文件
-if index < len(sys.argv):
-    filename = sys.argv[index]
-
 
 class package:
     def __init__(self, data=None):
@@ -68,21 +47,21 @@ class package:
         # Header
         newData = bytes()
         newData += self.ID  # ID
-        newData += b'\x81\x80'
-        newData += b'\x00\x01'
-        newData += b'\x00\x02'
-        newData += b'\x00\x00'
-        newData += b'\x00\x00'
+        newData += b'\x81\x80'  # Flag
+        newData += b'\x00\x01'  # QDCOUNT 问题数量
+        newData += b'\x00\x02'  # ANCOUNT 回答数量
+        newData += b'\x00\x00'  # NSCOUNT 权威回答数量
+        newData += b'\x00\x00'  # ARCOUNT 附加回答数量
 
         # Question
-        newData += self.data[12:-4]
-        newData += b'\x00\x01\x00\x01'
+        newData += self.data[12:-4]  # 和源包中的Question字段相同
+        newData += b'\x00\x01\x00\x01'  # Type : CName  Class : IN
         self.data = newData
 
         # Answer
         self.data += b'\xc0\x0c'  # Name
         self.data += b'\x00\x05'  # Type : CName
-        self.data += b'\x00\x01'  # Class:IN
+        self.data += b'\x00\x01'  # Class : IN
         self.data += b'\x00\x00\x1c\x20'  # TTL:7200
         self.data += b'\x00\x02'  # Data Length
         self.data += b'\xc0\x0c'  # CNAME
@@ -103,6 +82,27 @@ class package:
         return self.data
 
 
+index = 1  # 参数位置
+mode = 0  # 调试级别
+if index < len(sys.argv):
+    if sys.argv[1] == '-d':
+        mode = 1  # 仅输出时间坐标，序号，查询的域名
+        index += 1
+    elif sys.argv[1] == '-dd':
+        mode = 2
+        index += 1
+
+nameserver = []  # DNS
+if index < len(sys.argv):
+    if sys.argv[index].count('.') == 3 and sys.argv[index].startswith(
+            ('1', '2', '3', '4', '5', '6', '7', '8', '9', '0')):
+        nameserver.append(sys.argv[index])
+        index += 1
+
+filename = 'dnsrelay.txt'  # hosts文件
+if index < len(sys.argv):
+    filename = sys.argv[index]
+
 hosts = {}  # read dnsrelay
 with open(filename) as file:
     for line in file:
@@ -113,15 +113,12 @@ with open(filename) as file:
 if not nameserver:
     with open('/etc/resolv.conf') as res:
         for line in res:
-            s = line.split();
+            s = line.split()
             if s[0] == 'nameserver':
                 nameserver.append(s[1])
 
-LocalAddr = ('0.0.0.0', 53)
-# SourceAddr = ('127.0.0.1', 53)
-ServerAddr = ('127.0.0.1', 53)
-if nameserver:
-    ServerAddr = (nameserver[0], 53)
+LocalAddr = ('0.0.0.0', 53)  # 监听的IP和端口
+ServerAddr = (nameserver[0], 53)
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # SOCK_DGRAM是UDP传输协议
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -140,7 +137,7 @@ while True:
     P = package(data)
     debugInfo1['domain name'] = P.domainStr.decode('ascii')
     debugInfo2 = {}
-    debugInfo2['ID'] = hex(struct.unpack('!H',P.ID)[0])
+    debugInfo2['ID'] = hex(struct.unpack('!H', P.ID)[0])
     debugInfo2['QR'] = P.QR
     debugInfo2['Opcode'] = P.Opcode
     debugInfo2['AA'] = P.AA
@@ -148,7 +145,7 @@ while True:
     debugInfo2['RD'] = P.RD
     debugInfo2['RA'] = P.RA
     debugInfo2['RCODE'] = P.RCODE
-    debugInfo2['QDCOUNT'] = struct.unpack('!H', P.QDCOUNT)[0]
+    debugInfo2['QDCOUNT'] = struct.unpack('!H', P.QDCOUNT)[0]  # !H 代表逆序网络字节序解包
     debugInfo2['ANCOUNT'] = struct.unpack('!H', P.ANCOUNT)[0]
     debugInfo2['NSCOUNT'] = struct.unpack('!H', P.NSCOUNT)[0]
     debugInfo2['ARCOUNT'] = struct.unpack('!H', P.ARCOUNT)[0]
@@ -158,12 +155,13 @@ while True:
     if result:
         debugInfo1['result'] = 'Found it!'
         s.sendto(result, SourceAddr)
-    else:
+    else:  # dnsrelay.txt 中找不到相应的域名,中继数据包
         debugInfo1['result'] = 'Not found!'
         s.sendto(data, ServerAddr)
         data, addr = s.recvfrom(2048)
         s.sendto(data, SourceAddr)
 
+    # 打印调试信息
     if mode == 1:
         pprint(debugInfo1)
     elif mode == 2:
