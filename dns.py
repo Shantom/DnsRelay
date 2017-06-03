@@ -39,8 +39,6 @@ class package:
             self.QTYPE = data[i + 1:i + 3]
             self.QCLASS = data[i + 3:i + 5]
 
-            if self.QR == 0x80:  # 响应
-                pass
 
     def genResponse(self, hosts):
 
@@ -77,6 +75,12 @@ class package:
         addr = hosts[self.domainStr.decode('ascii')].split('.')  # addr is a list containing 4 numbers
 
         addr = list(map(int, addr))  # convert string to int
+        if addr == [0, 0, 0, 0]:
+            tempData = self.data[0:3]
+            tempData += b'\x83'
+            tempData += self.data[4:]
+            self.data = tempData
+
         # print(addr)
         self.data += struct.pack('BBBB', *addr)
         return self.data
